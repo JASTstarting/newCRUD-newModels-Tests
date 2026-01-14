@@ -10,7 +10,7 @@ use Illuminate\Support\Carbon;
 
 /**
  * @property int $id
- * @property string $name
+ * @property string $title
  * @property string $description
  * @property Carbon|null $created_date
  * @property int $author_id
@@ -24,7 +24,7 @@ class Book extends Model
     use HasFactory, SoftDeletes;
 
     protected $fillable = [
-        'name',
+        'title',
         'description',
         'created_date',
         'author_id',

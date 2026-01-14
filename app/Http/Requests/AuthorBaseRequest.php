@@ -18,95 +18,104 @@ abstract class AuthorBaseRequest extends FormRequest
         return $this;
     }
 
+    protected function prepareForValidation(): void
+    {
+        $first  = $this->input('first_name');
+        $last   = $this->input('last_name');
+        $father = $this->input('father_name');
+        $birth  = $this->input('birth_date');
+
+        $first  = is_string($first)  ? trim($first)  : $first;
+        $last   = is_string($last)   ? trim($last)   : $last;
+        $father = is_string($father) ? trim($father) : $father;
+
+        $birthNormalized = null;
+        if ($birth !== null && $birth !== '') {
+            try {
+                $birthNormalized = Carbon::parse($birth)->toDateString();
+            } catch (Exception) {
+                $birthNormalized = $birth;
+            }
+        }
+
+        $this->merge([
+            'first_name'  => $first,
+            'last_name'   => $last,
+            'father_name' => $father,
+            'birth_date'  => $birthNormalized,
+        ]);
+    }
+
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $validator) {
+            if ($validator->errors()->isNotEmpty()) {
+                return;
+            }
             $this->checkAuthorDuplicate($validator);
         });
     }
 
     protected function checkAuthorDuplicate(Validator $validator): void
     {
-        $firstName = $this->input('first_name');
-        $lastName = $this->input('last_name');
-        $fatherName = $this->input('father_name');
-        $birthDate = $this->input('birth_date');
+        $firstName  = (string) $this->input('first_name');
+        $lastName   = (string) $this->input('last_name');
+        $fatherName = (string) $this->input('father_name');
+        $birthDate  = $this->input('birth_date');
 
-        // Проверяем сначала активных авторов (без корзины)
-        $activeQuery = Author::where([
-            'first_name' => $firstName,
-            'last_name' => $lastName,
-            'father_name' => $fatherName,
-        ]);
+        $query = Author::withTrashed()
+            ->where('first_name', $firstName)
+            ->where('last_name', $lastName)
+            ->where('father_name', $fatherName);
 
-        if ($this->excludeAuthorId) {
-            $activeQuery->where('id', '!=', $this->excludeAuthorId);
-        }
-
-        if ($birthDate && trim($birthDate) !== '') {
+        if (!empty($birthDate)) {
             try {
-                $formattedDate = Carbon::parse($birthDate)->format('Y-m-d');
-                $activeQuery->whereDate('birth_date', $formattedDate);
+                $normalized = Carbon::parse($birthDate)->toDateString();
+                $query->whereDate('birth_date', $normalized);
             } catch (Exception) {
             }
         } else {
-            $activeQuery->whereNull('birth_date');
+            $query->whereNull('birth_date');
         }
-
-        // Проверяем авторов в корзине
-        $trashedQuery = Author::onlyTrashed()->where([
-            'first_name' => $firstName,
-            'last_name' => $lastName,
-            'father_name' => $fatherName,
-        ]);
 
         if ($this->excludeAuthorId) {
-            $trashedQuery->where('id', '!=', $this->excludeAuthorId);
+            $query->where('id', '!=', $this->excludeAuthorId);
         }
 
-        if ($birthDate && trim($birthDate) !== '') {
-            try {
-                $formattedDate = Carbon::parse($birthDate)->format('Y-m-d');
-                $trashedQuery->whereDate('birth_date', $formattedDate);
-            } catch (Exception) {
-            }
-        } else {
-            $trashedQuery->whereNull('birth_date');
-        }
+        $duplicate = $query->first();
 
-        // Сначала проверяем активных авторов
-        if ($activeQuery->exists()) {
-            $validator->errors()->add('first_name', 'Автор с такими ФИО и датой рождения уже существует');
-        }
-        // Если активных нет, но есть в корзине
-        elseif ($trashedQuery->exists()) {
-            $validator->errors()->add('first_name', 'Автор с такими ФИО и датой рождения уже существует, но находится в корзине. Сначала восстановите или удалите его.');
+        if ($duplicate) {
+            $message = $duplicate->trashed()
+                ? __('messages.author.duplicate_in_trash')
+                : __('messages.author.duplicate');
+
+            $validator->errors()->add('first_name', $message);
         }
     }
 
     public function rules(): array
     {
         return [
-            'first_name' => ['required', 'string', 'max:255'],
-            'last_name'  => ['required', 'string', 'max:255'],
-            'father_name'=> ['required', 'string', 'max:255'],
-            'birth_date' => ['nullable', 'date', 'before:today'],
-            'biography'  => ['nullable', 'string', 'max:5000'],
-            'gender'     => ['required', 'boolean'],
-            'active'     => ['nullable', 'boolean'],
+            'first_name'  => ['required', 'string', 'max:255'],
+            'last_name'   => ['required', 'string', 'max:255'],
+            'father_name' => ['required', 'string', 'max:255'],
+            'birth_date'  => ['nullable', 'date', 'before:today'],
+            'biography'   => ['nullable', 'string', 'max:5000'],
+            'gender'      => ['required', 'boolean'],
+            'active'      => ['nullable', 'boolean'],
         ];
     }
 
     public function messages(): array
     {
         return [
-            'first_name.required' => 'Имя обязательно для заполнения.',
-            'last_name.required'  => 'Фамилия обязательна для заполнения.',
-            'father_name.required'=> 'Отчество обязательно для заполнения.',
-            'birth_date.date'     => 'Дата рождения должна быть корректной датой.',
-            'birth_date.before'   => 'Дата рождения не может быть в будущем.',
-            'gender.required'     => 'Пол обязателен для выбора.',
-            'gender.boolean'      => 'Пол указан некорректно.',
+            'first_name.required'  => 'Имя обязательно для заполнения.',
+            'last_name.required'   => 'Фамилия обязательна для заполнения.',
+            'father_name.required' => 'Отчество обязательно для заполнения.',
+            'birth_date.date'      => 'Дата рождения должна быть корректной датой.',
+            'birth_date.before'    => 'Дата рождения не может быть в будущем.',
+            'gender.required'      => 'Пол обязателен для выбора.',
+            'gender.boolean'       => 'Пол указан некорректно.',
         ];
     }
 }

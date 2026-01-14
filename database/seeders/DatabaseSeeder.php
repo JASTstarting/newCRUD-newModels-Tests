@@ -17,16 +17,21 @@ class DatabaseSeeder extends Seeder
     {
         City::factory()
             ->count(10)
-            ->has(Company::factory()->count(rand(1,3)), 'companies')
-            ->create();
+            ->create()
+            ->each(function (City $city) {
+                Company::factory()
+                    ->count(fake()->numberBetween(1, 3))
+                    ->create(['city_id' => $city->id]);
+            });
+
+        $companyIds = Company::query()->pluck('id');
 
         Author::factory()
             ->count(50)
             ->create()
-            ->each(function (Author $author) {
+            ->each(function (Author $author) use ($companyIds) {
                 if ($author->active) {
-                    $companyIds = Company::query()->inRandomOrder()->limit(5)->pluck('id');
-                    $count = rand(2,4);
+                    $count = fake()->numberBetween(2, 4);
                     for ($i = 0; $i < $count; $i++) {
                         Book::factory()->create([
                             'author_id'  => $author->id,

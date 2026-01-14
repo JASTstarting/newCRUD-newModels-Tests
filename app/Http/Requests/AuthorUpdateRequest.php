@@ -13,6 +13,8 @@ class AuthorUpdateRequest extends AuthorBaseRequest
 
     protected function prepareForValidation(): void
     {
+        parent::prepareForValidation();
+
         $author = $this->route('author');
 
         if ($author instanceof Author) {

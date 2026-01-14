@@ -13,6 +13,8 @@ class BookUpdateRequest extends BookBaseRequest
 
     protected function prepareForValidation(): void
     {
+        parent::prepareForValidation();
+
         $book = $this->route('book');
 
         if ($book instanceof Book) {
